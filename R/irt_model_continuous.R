@@ -9,8 +9,8 @@
 #' @return A list with the following components:
 #' \item{\code{model}}{The IRT model.  }
 #' \item{\code{anomalous}}{A binary value for each algorithm. It is set to 1 if an algorithm is anomalous. Otherwise it is set to 0.  }
-#'  \item{\code{stability}}{The stability of each algorithm.}
-#'  \item{\code{easiness_threshold}}{The easiness threshold of each algorithm. A lower threshold indicates that the algorithm finds more test instances easy.}
+#'  \item{\code{consistency}}{The consistency of each algorithm.}
+#'  \item{\code{difficulty_limit}}{The difficulty limit of each algorithm. A higher difficulty limit indicates that the algorithm can tackle harder problems.}
 #'
 #'@examples
 #'set.seed(1)
@@ -18,9 +18,11 @@
 #'x2 <- runif(100)
 #'x3 <- runif(100)
 #'X <- cbind.data.frame(x1, x2, x3)
-#'max_item <- rep(1,3)
-#'min_item <- rep(0,3)
-#'mod <- cirtmodel(X, max.item=max_item, min.item=min_item)
+#'mod <- cirtmodel(X)
+#'
+#'@references Zopluoglu C (2022). EstCRM: Calibrating Parameters for the Samejima's Continuous IRT Model. R
+#'package version 1.6, \url{https://CRAN.R-project.org/package=EstCRM}.
+#'
 #' @importFrom stats cov na.omit sd var
 #' @export
 cirtmodel <- function(df, max.item=NULL, min.item=NULL){
@@ -40,8 +42,8 @@ cirtmodel <- function(df, max.item=NULL, min.item=NULL){
   out <- list()
   out$model <- mod
   out$anomalous <- anomalous
-  out$stability <- stability
-  out$easiness_threshold <- paras[ ,2]
+  out$consistency <- stability
+  out$difficulty_limit <- -1*paras[ ,2]  # updated to change to difficulty
   return(out)
 }
 

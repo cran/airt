@@ -1,33 +1,56 @@
 #' Performs the latent trait analysis
 #'
-#' This function performs the latent trait analysis of the datasets/problems after fitting a continuous IRT model. It fits a smoothing spline to the points to compute the latent trait.
+#' This function performs the latent trait analysis of the datasets/problems after fitting a continuous IRT model.
+#' It fits a smoothing spline to the points to compute the latent trait. The autoplot function plots the latent trait
+#' and the performance.
 #'
 #' @param df The performance data in a matrix or dataframe.
 #' @param paras The parameters from fitting \code{cirtmodel}.
 #' @param max_item A vector with the maximum performance value for each algorithm.
 #' @param min_item A vector with the minimum performance value for each algorithm.
-#' @param epsilon A value defining good algorithm performance. If \code{epsilon = 0}, then only the best algorithm is considered. A default
+#' @param epsilon A value defining good algorithm performance. If \code{epsilon = 0}, then only
+#' the best algorithm is considered. A default
+#' @param object For autoplot: the output of the function latent_trait_analysis.
+#' @param xlab For autoplot: the xlabel.
+#' @param ylab For autoplot: the ylabel.
+#' @param plottype For autoplot: plottype = 1 for all algorithm performances in a single plot, plottype = 2
+#' for using facet_wrap to plot individual algorithms, plottype = 3 to plot the smoothing splines and
+#' plottype = 4 to plot strengths and weaknesses.
+#' @param nrow For autoplot: If \code{plottype = 2}, the number of rows for facet_wrap.
+#' @param se For autoplot: for plotting splines with standard errors.
+#' @param ratio For autoplot: for plotting strengths and weaknesses, ratio between x and y axis.
+#' @param ...  Other arguments currently ignored.
+#'
 #'
 #' @return A list with the following components:
 #' \item{\code{crmtheta}}{The problem trait output computed from the R package EstCRM.}
-#' \item{\code{crmtheta}}{The problem trait output computed from the R package EstCRM.}
 #' \item{\code{strengths}}{The strengths of each algorithm and positions on the latent trait that they performs well. }
-#' \item{\code{dfl}}{The dataset in a long format of latent trait occupancy.}
+#' \item{\code{longdf}}{The dataset in long format of latent trait occupancy.}
 #' \item{\code{plt}}{The ggplot object showing the fitted smoothing splines.}
+#' \item{\code{widedf}}{The dataset in wide format with latent trait.}
 #' \item{\code{thetas}}{The easiness of the problem set instances.}
 #' \item{\code{weakness}}{The weaknesses of each algorithm and positions on the latent trait that they performs poorly.}
 #'
 #'@examples
+#' # This is a dummy example.
 #'set.seed(1)
-#'x1 <- runif(100)
-#'x2 <- runif(100)
-#'x3 <- runif(100)
+#'x1 <- runif(200)
+#'x2 <- 2*x1 + rnorm(200, mean=0, sd=0.1)
+#'x3 <- 1 - x1 + rnorm(200, mean=0, sd=0.1)
 #'X <- cbind.data.frame(x1, x2, x3)
-#'max_item <- rep(1,3)
-#'min_item <- rep(0,3)
+#'max_item <- rep(max(x1, x2, x3),3)
+#'min_item <- rep(min(x1, x2, x3),3)
 #'mod <- cirtmodel(X, max.item=max_item, min.item=min_item)
 #'out <- latent_trait_analysis(X, mod$model$param, min_item= min_item, max_item = max_item)
 #'out
+#' # To plot performance against the problem difficulty
+#'autoplot(out)
+#'# To plot individual panels
+#'autoplot(out, plottype = 2)
+#'# To plot smoothing splines
+#'autoplot(out, plottype = 3)
+#' # To plot strengths and weaknesses
+#'autoplot(out, plottype = 4)
 #'
 #' @importFrom rlang .data
 #' @importFrom magrittr  %>%
@@ -35,8 +58,17 @@
 #' @importFrom dplyr mutate filter rename group_by summarize n left_join arrange desc select
 #' @importFrom graphics hist
 #' @export
-latent_trait_analysis <- function(df, paras, min_item=0, max_item=1, epsilon = 0.01){
+latent_trait_analysis <- function(df, paras, min_item=NULL, max_item=NULL, epsilon = 0.01){
+  if(is.null(max_item)){
+    max_item <- apply(df, 2, max)
+  }
+  if(is.null(min_item)){
+    min_item <- apply(df, 2, min)
+  }
   oo <- EstCRM::EstCRMperson(df, paras, min_item ,max_item)
+  # UPDATE START: updated latent trait to dataset difficulty = multiply by -1
+  oo$thetas[, 2] <- -1*oo$thetas[, 2]
+  # UPDATE END
   id_ord <- order(oo$thetas[ ,2])
   df3 <- df[id_ord, ]
 
@@ -50,21 +82,99 @@ latent_trait_analysis <- function(df, paras, min_item=0, max_item=1, epsilon = 0
   colnames(dfl)[3] <- "Algorithm"
 
 
-  g2 <- ggplot2::ggplot(dfl,  ggplot2::aes(.data$Latent_Trait, .data$value)) +   ggplot2::geom_smooth( ggplot2::aes(color=.data$Algorithm), method = "gam", formula = y ~s(x, bs="cs"))+   ggplot2::xlab("Latent Trait (Dataset Easiness)") +  ggplot2::ylab("Performance")  +  ggplot2::theme_bw()
+  g2 <- ggplot2::ggplot(dfl,  ggplot2::aes(.data$Latent_Trait, .data$value)) +
+    ggplot2::geom_smooth( ggplot2::aes(color=.data$Algorithm), method = "gam", formula = y ~s(x, bs="cs"))+
+    ggplot2::xlab("Latent Trait (Dataset Easiness)") +  ggplot2::ylab("Performance")  +
+    ggplot2::theme_bw()
   out1 <- latent_length(g2, dfl$Algorithm, oo$thetas, epsilon, good = TRUE)
   out2 <- latent_length(g2, dfl$Algorithm, oo$thetas, epsilon, good = FALSE)
 
   out <- list()
-  out$crmtheta <- oo
-  out$strengths <- out1
-  out$longdf <- dfl
-  out$plt <- g2
-  out$widedf <- df3
-  out$thetas <- oo$thetas
-  out$weakness <- out2
-  return(out)
+  structure(list(
+    crmtheta = oo,
+    strengths = out1,
+    longdf = dfl,
+    plt = g2,
+    widedf = df3,
+    thetas = oo$thetas,
+    weakness = out2,
+    call = match.call()
+  ), class='latenttrait')
 }
 
+
+#' @rdname latent_trait_analysis
+#' @export
+autoplot.latenttrait <- function(object,
+                                xlab = 'Problem Difficulty',
+                                ylab = 'Performance',
+                                plottype = 1,
+                                nrow = 2,
+                                se = TRUE,
+                                ratio = 3,
+                                ...){
+
+  latenttrait <- Latent_Trait <- value <- Algorithm <- NULL
+
+  dfl <- object$longdf
+  if(plottype == 1){
+    # algorithm performance vs latent trait
+    g1 <- ggplot(dfl, aes(Latent_Trait, value)) +
+      geom_point(aes(color=Algorithm)) +
+      xlab(xlab) +
+      ylab(ylab) +
+      theme_bw()
+  }else if(plottype == 2){
+    # individual algorithm performance vs latent trait
+    g1 <- ggplot(dfl, aes(Latent_Trait, value)) +
+      geom_point(aes(color=Algorithm)) +
+      facet_wrap(~Algorithm, nrow=2, scales = 'free') +
+      xlab(xlab) +
+      ylab(ylab)  +
+      theme_bw()
+  }else if(plottype == 3){
+    # splines plot
+    g1 <- ggplot(dfl, aes(Latent_Trait, value)) +
+      geom_smooth(aes(color=Algorithm), se = se, method = "gam", formula = y ~s(x, bs="cs")) +
+      xlab(xlab) +
+      ylab(ylab) +
+      theme_bw() +
+      theme(legend.position="bottom", legend.box = "horizontal")
+  }else{
+    # strengths and weaknesses plot
+    lto_eps1 <- object$strengths$proportions
+
+    # Strengths
+    latenttr <- object$strengths$multilatent
+    dfl2 <- tidyr::pivot_longer(latenttr, cols = 2:dim(latenttr)[2])
+    colnames(dfl2)[2] <- "Algorithm"
+    dfl2 <- dfl2[dfl2$value!=0, ]
+    dfl2$value <- dfl2$value*0.1
+
+    # Weaknesses
+    latenttr2 <- object$weakness$multilatent
+    dfl3 <- tidyr::pivot_longer(latenttr2, cols = 2:dim(latenttr)[2])
+    colnames(dfl3)[2] <- "Algorithm"
+    dfl3 <- dfl3[dfl3$value!=0, ]
+    dfl3$value <- dfl3$value*0.1
+
+    dfl21 <- dfl2 %>% mutate(type = "Strengths")
+    dfl31 <- dfl3 %>% mutate(type = "Weaknesses")
+
+    dflall <- dplyr::bind_rows(dfl21, dfl31)
+    num_algos <- length(unique(dflall$Algorithm))
+    colrs <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(8, "Dark2"))(num_algos)
+
+    g1 <- ggplot(dflall, aes(x = latenttrait, y =value, fill = Algorithm)) +
+      geom_tile() +
+      facet_wrap(type ~.,  nrow = 1) +
+      theme(axis.title.y=element_blank(), axis.text.y=element_blank(),axis.ticks.y=element_blank())  +
+      scale_fill_manual(values = colrs) +
+      xlab(xlab) +
+      coord_fixed(ratio = ratio)
+   }
+  g1
+}
 
 
 latent_length <- function(gplot, group_names, thetas, epsilon, good = TRUE){
@@ -93,8 +203,8 @@ latent_length <- function(gplot, group_names, thetas, epsilon, good = TRUE){
   res <- hist(sorthedtheta, breaks = xvals3, plot = FALSE)
   algodf <- as_tibble(algo) %>% mutate(count = res$counts) %>% tidyr::uncount(.data$count) %>% select(-.data$count)
   algos <- as_tibble(as.vector(as.matrix(algodf))) %>% filter(.data$value > 0) %>% rename(algo = .data$value)
-  props <- algos %>% group_by(algo) %>% summarize(prop = n()/NROW(algos) )
-
+  # updated to NROW(thetas) because when epsilon > 0, the total props is > 1
+  props <- algos %>% group_by(algo) %>% summarize(prop = n()/NROW(thetas) )
   algorithm <- grp_ord[props$algo]
   df11 <- props %>% mutate(algorithm = algorithm) %>% rename(Proportion = .data$prop, group = algo) %>% left_join(group_colour) %>% arrange(desc(.data$Proportion))
   multilatent <- cbind.data.frame(df_wide[, 1], algo)

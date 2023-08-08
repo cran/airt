@@ -47,172 +47,176 @@ library(ggplot2)
 library(tidyr)
 library(gridExtra)
 ```
-The goal of _airt_ is to evaluate performance of algorithms using Item Response Theory (IRT). You can use _airt_ to evaluate the performance of a group of algorithms on a collection of test instances.  The IRT model is fitted using the R package __mirt__ .
+The goal of _airt_ is to evaluate the performance of a portfolio of algorithms using Item Response Theory (IRT). The IRT models are fitted using the R packages __EstCRM__ and __mirt__. The function in __EstCRM__ is slightly modified to account for a broader set of parameters. 
 
 
-## Classification Algorithms - Continuous IRT model
+## Classification Algorithms 
 
-This example is on classification algorithms. The data *classification* has performance data from 10 classification algorithms on 235 datasets. This data is discussed in  [@munoz2018instance] and can be found at the test instance library MATILDA [@matilda].
+This example is on classification algorithms. The data *classification* has performance data from 10 classification algorithms on 235 datasets. This data is discussed in  [@munoz2018instance] and can be found at the test instance library MATILDA [@matilda]. Let's have a look at this dataset.
 
 ```{r example2}
 data("classification_cts")
-df2 <- classification_cts
-max_item  <- max(df2)
-min_item <- 0
-max.item <- rep(max_item, dim(df2)[2])
-min.item <- rep(min_item, dim(df2)[2])
-df2 <- as.data.frame(df2)
-modout <- cirtmodel(df2, max.item, min.item)
+df <- classification_cts
+head(df)
+```
+In this dataset the columns represent algorithms and rows represent datasets/instances. The values are performance values. That is, the performance of dataset1 to algorithm Naive Bayes (NB) is 0.7199042.  This dataframe is the input to our AIRT model. We fit it by calling *cirtmodel*.
+
+## Fitting a Continuous IRT Model to Algorithm Performance Data
+```{r classificationairt}
+modout <- cirtmodel(df)
+```
+
+Now the model is fitted. Let's have a look at traditional IRT parameters. 
+
+```{r irtparas}
 paras <- modout$model$param
-
-gdf <- prepare_for_plots_crm(modout$model) 
-ggplot(gdf, aes(theta, z)) + geom_raster(aes(fill=pdf))  + xlab("theta") + facet_wrap(~Algorithm, nrow=2) + coord_fixed(ratio=1) + theme_bw()  +  scale_fill_viridis_c(option = "plasma")  
+paras
 ```
 
-The figure above shows the probability density of the fitted IRT model over Theta and z values. The y axis denotes the normalized performance values.  The high density regions are showed by the lighter coloured parts.
+The parameter *a* denotes discrimination, *b* denotes difficulty and *alpha* is a scaling parameter. These are traditional IRT parameters. Using these parameters we will find AIRT algorithm attributes. These are **algorithm anomalousness, consistency and the difficulty limit**. 
 
-## Classification Algorithms -Latent Trait Analysis
-We can also look at the datasets and their easiness with respect to the algorithms. This is called the latent trait analysis. 
+```{r airtparas}
+```
+
+If an algorithm is anomalous then the anomalous indicator is 1. In this algorithm portfolio, none of the algorithms are anomalous, because all anomalous indicators are 0. Anomalous algorithms give good performances for difficult problems and poor performances for easy problems. 
+
+The difficulty limit gives the highest difficulty level that algorithms can handle. In this scenario, QDA has the highest difficulty limit. So, QDA can handle the hardest problems. KNN has the lowest difficulty limit. It can only handle very easy problems. 
+
+Algorithm consistency attribute gives how consistent an algorithm is. An algorithm can be consistently good for most of the problems or it can be consistently poor for many problems. And many algorithms can vary in their performance depending on the problem/dataset. In this portfolio, QDA is the most consistent algorithm. 
+
+Let's look at these algorithms visually. The *heatmaps_crm* function plots the heatmaps. The part *crm* stands for continuous response model. 
+
+```{r heatmaps}
+obj <- heatmaps_crm(modout) 
+autoplot(obj)
+```
+Let's discuss these heatmaps. Theta (x axis) represents the dataset easiness and z (y axis) represents the normalized performance values. The heatmaps show the probability density of the fitted IRT model over Theta and z values for each algorithm.
+
+Apart from QDA all heatmaps have a line (a bit like a lightsaber) going through it.  If the lightsaber has a positive slope, then the algorithm is not anomalous. We see some lightsabers are sharper than others. Algorithms with sharper lightsabers are more discriminating. The algorithms with no lightsabers (QDA) or blurry lightsabers are more consistent. In this portfolio, QDA is the most consistent as it doesn't have any lightsabers. LDA and NB are also somewhat consistent. RBF_SVM is the least consistent (most discriminating) as it has a very sharp line. 
+
+### The Problem Difficulty Space and Algorithm Performance  
+We can also look at the algorithm performance with respect to the dataset difficulty. This is called the latent trait analysis. The function *latent_trait_analysis* does this for you. We need to pass the IRT parameters to do this analysis.
+
 ```{r latenttrait}
-
-obj <- latent_trait_analysis(df2,modout$model$param,min.item,max.item, epsilon = 0 )
-
-dfl <- obj$longdf
-
-g1 <- ggplot(dfl, aes(Latent_Trait, value)) +  geom_point(aes(color=Algorithm)) + xlab("Latent Trait (Dataset Easiness)") + ylab("Performance")  + theme_bw() 
-g1
+obj <- latent_trait_analysis(df, modout$model$param, epsilon = 0 )
+autoplot(obj, plottype = 1)
 ```
 
-The figure above shows the performance of the 10 algorithms on different datasets ordered by dataset easiness. Or, we can split it by algorithm. 
-
+When you use *plottype = 1*, it plots all algorithms in a single plot. To have a separate plot for each algorithm we use *plottype = 2*. 
 
 ```{r latent2}
-
-g3 <- ggplot(dfl, aes(Latent_Trait, value)) +  geom_point(aes(color=Algorithm)) + xlab("Latent Trait (Dataset Easiness)") + facet_wrap(~Algorithm, nrow=2) + coord_fixed(ratio=6) + ylab("Performance") + theme_bw() 
-g3
-
+autoplot(obj, plottype = 2)
 ```
+From these plots we see that certain algorithms give better performances for different problem difficulty values. To get a better sense of which algorithms are better for which difficulty values we fit smoothing splines to the above data. By using *plottype = 3* in *autoplot* we can see these smoothing splines. 
 
 ```{r latent3}
-
-### Curve fitting - smoothing splines - latent trait
-g2 <- ggplot(dfl, aes(Latent_Trait, value)) +  geom_smooth(aes(color=Algorithm), se = FALSE, method = "gam", formula = y ~s(x, bs="cs"))+  xlab("Latent Trait (Dataset Easiness)") + ylab("Performance")  + theme_bw()  +theme(legend.position="bottom", legend.box = "horizontal")
-# g2
+autoplot(obj, plottype = 3)
 ```
 
-Next, we fit smoothing-splines to the performance data by algorithm. The figure above shows these smoothing splines for each algorithm as a function of the dataset easiness. From this figure, we can get the best algorithm for a given dataset easiness. This gives us the proportion of the latent trait spectrum occupied by each algorithm. We call this the latent trait occupancy. 
+### Strengths and Weaknesses of Algorithms
 
-```{r latent 4}
-latent <- obj$strengths
-latent$proportions
+From this plot, we can get the best algorithm for a given problem difficulty. We can use these splines to compute the proportion of the latent trait spectrum occupied by each algorithm. We call this the latent trait occupancy (LTO). These are strengths of algorithms. 
 
-num_algos <- length(unique(dfl$Algorithm))
-colrs <- scales::hue_pal()(num_algos)
+```{r lto}
+obj$strengths$proportions
 
-latenttr <- obj$strengths$multilatent
-dfl2 <- tidyr::pivot_longer(latenttr, cols = 2:dim(latenttr)[2])
-colnames(dfl2)[2] <- "Algorithm"
-dfl2 <- dfl2[dfl2$value!=0, ]
-new_vals <- seq(1, length(unique(dfl2$value)), by = 1)
-dfl2$value <- new_vals[as.factor(dfl2$value )]
-dfl2$value <- dfl2$value*0.1
-colrs2 <- colrs[which(sort(unique(dfl$Algorithm)) %in% unique(dfl2$Algorithm))]
-g6 <- ggplot(dfl2, aes(x = latenttrait, y =value, fill = Algorithm)) + geom_tile() + theme(axis.title.y=element_blank(), axis.text.y=element_blank(),axis.ticks.y=element_blank()) +   scale_fill_manual(values = colrs2) + ggtitle("Algorithm Strengths") + coord_fixed(ratio=1)
+```
+The column *Proportion* gives the latent trait occupancy of the algorithm. In this scenario, J48 has the highest latent trait occupancy.
 
-latenttr2 <- obj$weakness$multilatent
-dfl3 <- tidyr::pivot_longer(latenttr2, cols = 2:dim(latenttr)[2])
-colnames(dfl3)[2] <- "Algorithm"
-dfl3 <- dfl3[dfl3$value!=0, ]
-new_vals <- seq(1, length(unique(dfl3$value)), by = 1)
-dfl3$value <- new_vals[as.factor(dfl3$value )]
-dfl3$value <- dfl3$value*0.1
-colrs2 <- colrs[which(sort(unique(dfl$Algorithm)) %in% unique(dfl3$Algorithm))]
-g7 <- ggplot(dfl3, aes(x = latenttrait, y =value, fill = Algorithm)) + geom_tile() + theme(axis.title.y=element_blank(), axis.text.y=element_blank(),axis.ticks.y=element_blank()) +  scale_fill_manual(values = colrs2)  + ggtitle("Algorithm Weaknesses") +  coord_fixed(ratio=0.1)
+Similar to strengths, we can say an algorithm is weak if it has the lowest performance for a given difficulty. 
 
-g2
-grid.arrange(g6, g7)
+```{r weaknesses}
+obj$weakness$proportions
+```
+In this example QDA is the weakness algorithm. QDA is weak for 0.99 of the latent trait. But now there is a big question. If QDA is the weakest algorithm, why did it have such a high difficulty limit? It had the highest difficulty limit of all the algorithms. What happened here? 
 
+```{r latent4}
+autoplot(obj, plottype = 4)
 ```
 
 We see latent trait occupancy in the graph above. The 5 algorithms J48, KNN L_SVM, poly_SVM and RBF_SVM occupy parts of the latent trait spectrum. That is, for some dataset easiness values, these algorithms display superiority. 
 
-## Classification Algorithms - Polytomous IRT model
-We have binned the data so that we can fit a polytomous IRT model to it. The lowest performance measurement is P1 and the highest is P5, with the others in between. The latent scores $\theta$ represent the easiness of the datasets.  Let's fit an IRT model to this data and look at the algorithm trace lines. 
+In this example we have used epsilon = 0. That would give a unique strength/weakness to each point in the problem space. If we make epsilon > 0, then we can get overlapping strengths and weaknesses. That is, we will get algorithms that are epsilon-away from the best algorithm in our strengths/weakness diagram. Let's do that. 
+
+```{r latent5}
+obj2 <- latent_trait_analysis(df, modout$model$param, epsilon = 0.02 )
+autoplot(obj2, plottype = 4)
+```
+Now we see some overlapping strengths and weaknesses. For very easy problems, many algorithms have strengths, and for more difficult problems, we see that KNN and J48 are strong. QDA is weak for most part of the problem space. 
+
+### Is this a good model? Model Goodness Metrics
+
+All this is good, but is the fitted IRT model good? To check this, we have a couple of measures. One is the Model Goodness Curve. We first call the model_goodness_crm function to compute the model goodness metrics. Then by calling autoplot we can plot the curves. The letters *crm* stands for continuous response model. 
+
+```{r modelgoodness}
+
+modelgood <- model_goodness_crm(modout)
+autoplot(modelgood)
+
+```
+
+In the above graph, we're looking at the distribution of errors -- that is, the difference between the predicted and the actual values for different algorithms.  The x-axis has the absolute error scaled to [0,1] and the y-axis shows the empirical cumulative distribution of errors for each algorithm. For a given algorithm a model is well fitted if the curve goes up to 1 on the y-axis quickly. That is, if the Area Under the Curve (AUC) is closer to 1. We can check the AUC and the Mean Square Error (MSE) for these algorithms.  
+
+```{r modelgoodness2}
+cbind.data.frame(AUC = modelgood$goodnessAUC, MSE = modelgood$mse)
+
+```
+From the graph and the table we see that the IRT model fits all algorithms well apart from QDA. We have another goodness metric called effectiveness. Effectiveness generally tells us how good the algorithms are. 
+
+```{r effectiveness1}
+modeleff <- effectiveness_crm(modout)
+autoplot(modeleff, plottype = 1)
+```
+This first plot tells us how good the algorithms actually perform, without fitting an IRT model. 
+
+```{r effectiveness2}
+autoplot(modeleff, plottype = 2)
+autoplot(modeleff, plottype = 3)
+```
+By using plottype = 2, we can get the predicted effectiveness and by using plottype = 3 we see how the actual and the predicted sit together. Here AUPEC means Area Under Predicted Effectiveness Curve and AUAEC means Area Under Actual Effectiveness Curve.  
+
+The IRT model has fitted the algorithms well if the points are close to the y = x line, shown as a dotted line. Again we see that apart from QDA, all algorithms are fitted well. 
+
+
+## A Polytomous IRT model 
+
+Polytomous is a fancy word. It means ordered data like *Very Good > Good > Neutral > Bad > Very Bad*. We can think of it as discrete data. We have binned the previous classification data to 5 binds so that we can fit a polytomous IRT model to it. The lowest performance measurement is called P1 and the highest is called P5, with the others in between.  Let's fit an IRT model to this data and look at the algorithm trace lines. 
 
 ```{r example}
 data("classification_poly")
 modout <- pirtmodel(classification_poly, vpara=FALSE)
 
-gdf <- prepare_for_plots_poly(modout$model)
-ggplot(gdf, aes(Theta, value)) + geom_line(aes(color=Level)) + facet_wrap(.~Algorithm) + ylab("Probability") + ggtitle("Classification Algorithm Trace Lines") + theme_bw()
+obj <- tracelines_poly(modout)
+autoplot(obj)
 ```
 
-The trace lines give the probability of getting performance levels from P1 to P5, for different values of dataset easiness denoted by theta.  The probability of getting P5 is higher for an easy dataset, while it is lower for a difficult dataset. We see that some algorithms have only levels P3 to P5, while some have all performance levels. Also, some algorithms like QDA have gentler transitions between the most likely performance levels, and some like RBF_SVM have very sharp transitions.
+The trace lines give the probability of getting performance levels from P1 to P5, for different values of dataset easiness denoted by Theta. Theta is dataset easiness. The probability of getting P5 is higher for an easy dataset, while it is lower for a difficult dataset. We see that some algorithms have only levels P3 to P5, while some have all performance levels. Also, some algorithms like QDA have gentler transitions between the most likely performance levels, and some like RBF_SVM have very sharp transitions.
 
-## IRT Model Goodness
+We can look at some of the AIRT attributes.
 
-But how good is our IRT model? Can we trust the algorithm trace lines? To check how good the IRT model is we compute the goodness of model in this way. The IRT model has computed latent scores for all the datasets. These scores tell us how easy or hard the datasets are. A high value of theta indicates an easy dataset. For each algorithm using the latent scores and the algorithm trace lines, we can predict the performance of the IRT model for each dataset. This is not 100% correct. Then we can compare the predicted performance with the actual performance values. That is what we do here. Let's look at the model goodness curves. 
-
-```{r, goodness, echo=TRUE}
-# Model Goodness and Algorithm effectiveness
-good <- model_goodness_poly(modout$model)
-
-good_curves <- as.data.frame(good$curves)
-print(good_curves)
-good_df <- good_curves %>% pivot_longer(cols=2:dim(good_curves)[2], names_to=c("Algorithm"))
-ggplot(good_df, aes(x,value)) + geom_point() + geom_line(aes(color = Algorithm), size=1) + xlab("Goodness Tolerance")  + ylab("Model Goodness Curve") + theme_bw()
+```{r poly2}
+cbind.data.frame(consistency = modout$consistency, anomalousness = modout$anomalous, difficulty_level = modout$difficulty_limit[, 1])
 ```
 
-The x axis is the goodness tolerance. That is, the values at x=0 tell you the percentage of actual = predicted for each algorithm. We see that for QDA only 45% of actual performance values equals the IRT predicted performance values, while for CART more than 95% of the actual performance values equals the IRT predicted performance values. 
+### Model Goodness
 
-If we make the definition of goodness slightly broader and include the proportion of predicted deviating from the actual by 1, then for QDA nearly 70% of the datasets are within that margin and for CART it is this proportion is nearly 100%. In this manner we relax the tolerance. The _curves_ list out these coordinates for each algorithm for each goodness tolerance level x.  The area under the curve is an indication of how accurate the IRT model is on a given algorithm. 
+But how good is our IRT model? Can we trust the algorithm trace lines? To check how good the IRT model is we compute the goodness of model in this way. 
 
-```{r AUMGC}
-good$goodnessAUC
+```{r, goodnesspoly}
+
+modelgoodness <- model_goodness_poly(modout)
+autoplot(modelgoodness)
+
 ```
-We see that the goodness of the IRT model is quite high for most algorithms apart from QDA. For QDA it is 0.79, which is low compared to the rest.  
+We can see the predicted and actual effectivess as well. 
 
-## Algorithm Effectiveness
-Suppose algorithm A gives good performance values and algorithm B gives poor performance values for most of the test instances. Then, we can say that algorithm A is more effective than algorithm B. Basically, this is our notion of effectiveness. We compute the proportion of datasets that achieve the highest performance value, P5 in this example. Then we compute the proportion of datasets that achieve the levels P5 and P4. Next the proportion of datasets that obtains P5, P4 or P3. We do this computation for actual performance values and IRT model predicted performance values. These two sets of effectiveness curves are shown in the 2 graphs below.  
+```{r effectivenesspoly}
+effpoly <- effectiveness_poly(modout)
+autoplot(effpoly, plottype = 3)
 
-```{r, effectiveness1, echo=TRUE}
-eff <- effectiveness_poly(modout$model)
-
-eff_curves <- as.data.frame(eff$actcurves)
-eff_df1 <- eff_curves %>% pivot_longer(cols=2:dim(eff_curves)[2], names_to=c("Algorithm"))
-
-eff_curves <- as.data.frame(eff$prdcurves)
-eff_df2 <- eff_curves %>% pivot_longer(cols=2:dim(eff_curves)[2], names_to=c("Algorithm"))
-
-eff_df <- rbind.data.frame(eff_df1, eff_df2)
-eff_df <- cbind.data.frame( eff_df, c( rep( "Actual Effectiveness", dim(eff_df1)[1]), rep("Predicted Effectiveness", dim(eff_df2)[1]) ) )
-colnames(eff_df)[4] <- "Act_Or_Pred"
-ggplot(eff_df, aes(x, value)) + geom_point() + geom_line(aes(color = Algorithm), size=1)  + facet_wrap(~Act_Or_Pred) + theme_bw()
 ```
+From this plot we see that again QDA is the outlier. Generally the AIRT model predicts higher effectiveness (AUPEC) for almost all algorithms. 
 
-Similar to the model goodness curves, we can find the area under the actual effectiveness curve and the predicted effectiveness curve. This will show how much the IRT predicted deviates from the actual, and also which algorithms are more effective than others. We show this in the graph below. 
-
-```{r, effectiveness2, echo=TRUE}
-df_eff <- cbind.data.frame(as.data.frame(eff$effectivenessAUC), rownames(eff$effectivenessAUC) )
-colnames(df_eff)[3] <- "Algorithm"
-
-ggplot(df_eff, aes(Actual, Predicted)) + geom_jitter(aes(color=Algorithm), size=3) + geom_abline(aes(intercept=0,slope=1), linetype="dotted") + xlim(c(0,1)) + ylim(c(0,1)) + xlab("Area under Actual Effectiveness Curve (AUAEC)") + ylab("Area under Predicted Effectiveness Curve (AUPEC)") +  theme_bw()
-
-measures <- cbind.data.frame(good$goodnessAUC, eff$effectivenessAUC)
-print(measures)
-```
-The table above shows the area under the model goodness curve and the areas under the actual and predicted effectiveness curves. 
-
-## Two more measures
-We define two more measures for algorithms: stability and anomalous nature. Algoroithms are stable if the transitions between the most likely performance levels are smoother. This can be seen from the algorithm trace lines. For example QDA and LDA have smoother transitions compared to RBF_SVM. This is related to the discrimination parameter in an IRT. We define stability as K - |discrimination|, where K is the highest absolute discrimination value. 
-
-In addition, some algorithms are anomalous. That is they perform well on datasets where the other algorithms perform poorly. We say an algorithm is anomalous is the IRT discrimination parameter is negative. In this example non of the algorithms are anomalous. 
-
-```{r moremeasures}
-stab <- modout$stability
-anomalous <- modout$anomalous
-cbind.data.frame(stab, anomalous)
-```
 
 More examples of algorithm evaluation using airt are discussed in our paper [@airtPaper]. 
 

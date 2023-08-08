@@ -2,9 +2,27 @@
 % Please edit documentation in R/latent_trait.R
 \name{latent_trait_analysis}
 \alias{latent_trait_analysis}
+\alias{autoplot.latenttrait}
 \title{Performs the latent trait analysis}
 \usage{
-latent_trait_analysis(df, paras, min_item = 0, max_item = 1, epsilon = 0.01)
+latent_trait_analysis(
+  df,
+  paras,
+  min_item = NULL,
+  max_item = NULL,
+  epsilon = 0.01
+)
+
+\method{autoplot}{latenttrait}(
+  object,
+  xlab = "Problem Difficulty",
+  ylab = "Performance",
+  plottype = 1,
+  nrow = 2,
+  se = TRUE,
+  ratio = 3,
+  ...
+)
 }
 \arguments{
 \item{df}{The performance data in a matrix or dataframe.}
@@ -15,31 +33,61 @@ latent_trait_analysis(df, paras, min_item = 0, max_item = 1, epsilon = 0.01)
 
 \item{max_item}{A vector with the maximum performance value for each algorithm.}
 
-\item{epsilon}{A value defining good algorithm performance. If \code{epsilon = 0}, then only the best algorithm is considered. A default}
+\item{epsilon}{A value defining good algorithm performance. If \code{epsilon = 0}, then only
+the best algorithm is considered. A default}
+
+\item{object}{For autoplot: the output of the function latent_trait_analysis.}
+
+\item{xlab}{For autoplot: the xlabel.}
+
+\item{ylab}{For autoplot: the ylabel.}
+
+\item{plottype}{For autoplot: plottype = 1 for all algorithm performances in a single plot, plottype = 2
+for using facet_wrap to plot individual algorithms, plottype = 3 to plot the smoothing splines and
+plottype = 4 to plot strengths and weaknesses.}
+
+\item{nrow}{For autoplot: If \code{plottype = 2}, the number of rows for facet_wrap.}
+
+\item{se}{For autoplot: for plotting splines with standard errors.}
+
+\item{ratio}{For autoplot: for plotting strengths and weaknesses, ratio between x and y axis.}
+
+\item{...}{Other arguments currently ignored.}
 }
 \value{
 A list with the following components:
 \item{\code{crmtheta}}{The problem trait output computed from the R package EstCRM.}
-\item{\code{crmtheta}}{The problem trait output computed from the R package EstCRM.}
 \item{\code{strengths}}{The strengths of each algorithm and positions on the latent trait that they performs well. }
-\item{\code{dfl}}{The dataset in a long format of latent trait occupancy.}
+\item{\code{longdf}}{The dataset in long format of latent trait occupancy.}
 \item{\code{plt}}{The ggplot object showing the fitted smoothing splines.}
+\item{\code{widedf}}{The dataset in wide format with latent trait.}
 \item{\code{thetas}}{The easiness of the problem set instances.}
 \item{\code{weakness}}{The weaknesses of each algorithm and positions on the latent trait that they performs poorly.}
 }
 \description{
-This function performs the latent trait analysis of the datasets/problems after fitting a continuous IRT model. It fits a smoothing spline to the points to compute the latent trait.
+This function performs the latent trait analysis of the datasets/problems after fitting a continuous IRT model.
+It fits a smoothing spline to the points to compute the latent trait. The autoplot function plots the latent trait
+and the performance.
 }
 \examples{
+# This is a dummy example.
 set.seed(1)
-x1 <- runif(100)
-x2 <- runif(100)
-x3 <- runif(100)
+x1 <- runif(200)
+x2 <- 2*x1 + rnorm(200, mean=0, sd=0.1)
+x3 <- 1 - x1 + rnorm(200, mean=0, sd=0.1)
 X <- cbind.data.frame(x1, x2, x3)
-max_item <- rep(1,3)
-min_item <- rep(0,3)
+max_item <- rep(max(x1, x2, x3),3)
+min_item <- rep(min(x1, x2, x3),3)
 mod <- cirtmodel(X, max.item=max_item, min.item=min_item)
 out <- latent_trait_analysis(X, mod$model$param, min_item= min_item, max_item = max_item)
 out
+# To plot performance against the problem difficulty
+autoplot(out)
+# To plot individual panels
+autoplot(out, plottype = 2)
+# To plot smoothing splines
+autoplot(out, plottype = 3)
+# To plot strengths and weaknesses
+autoplot(out, plottype = 4)
 
 }
